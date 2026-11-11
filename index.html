@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>주차별 목표진도표</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 한 장짜리 작업대 — 위 내 이름/도구줄, 가운데 표, 아래 카톡용 이미지 */
+:root {
+  --bg: #f5f7f6; --surface: #ffffff; --ink: #1d2a26; --muted: #64736e; --line: #d6dfdb;
+  --head: #2f6b5a; --head-ink: #ffffff; --mine: #e8f1ee; --sep: #9fb1aa;
+  --done: #2e8b57; --done-bg: #e3f3e9; --part: #c98a12; --part-bg: #fbf0d9; --miss: #c2453c; --miss-bg: #f9e2df;
+  --font: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #141a18; --surface: #1c2421; --ink: #e5ece9; --muted: #96a7a1; --line: #33413c;
+  --head: #3f8a74; --mine: #22332d; --sep: #4f6560;
+  --done: #5cc58a; --done-bg: #1f3a2b; --part: #e4b04a; --part-bg: #3a3020; --miss: #ef7d73; --miss-bg: #3d2523;
+  color-scheme: dark; } }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 14px; }
+h1 { margin: 0; font-size: 22px; text-wrap: balance; }
+.sub { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bar label { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+input[type=text], input[type=password], select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+#title { min-width: 0; width: 240px; font-weight: 700; }
+button { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--head); }
+button:focus-visible, td:focus-visible, th:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--head); outline-offset: 2px; }
+button.primary { background: var(--head); color: var(--head-ink); border-color: var(--head); font-weight: 700; }
+.me { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.me b { font-size: 15px; }
+#who { font-size: 16px; font-weight: 700; min-width: 140px; }
+.badge { font-size: 12px; padding: 3px 8px; border-radius: 99px; background: var(--head); color: var(--head-ink); font-weight: 700; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; border-radius: 6px; font-weight: 700; }
+.s1 { color: var(--done); background: var(--done-bg); }
+.s2 { color: var(--part); background: var(--part-bg); }
+.s3 { color: var(--miss); background: var(--miss-bg); }
+
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { border: 1px solid var(--line); padding: 0; text-align: center; height: 38px; }
+thead th { background: var(--head); color: var(--head-ink); font-weight: 700; font-size: 12.5px; padding: 4px 6px; min-width: 82px; white-space: nowrap; }
+th.no, td.no { width: 36px; min-width: 36px; color: var(--muted); font-size: 12.5px; }
+thead th.no { color: var(--head-ink); }
+td.name { text-align: left; padding: 0 10px; min-width: 96px; font-weight: 500; white-space: nowrap; position: sticky; left: 0; background: var(--surface); }
+thead th.namehead { position: sticky; left: 0; z-index: 1; }
+td.cell { font-size: 17px; font-weight: 700; user-select: none; }
+td.cell.can { cursor: pointer; }
+td.cell.can:hover { outline: 2px solid var(--head); outline-offset: -2px; }
+tr.mine td.no, tr.mine td.name, tr.mine td.goal, tr.mine td.gno { background: var(--mine); font-weight: 700; }
+tr.mine td.cell:not(.s1):not(.s2):not(.s3) { background: var(--mine); }
+td.sum { font-size: 13px; color: var(--muted); min-width: 60px; }
+tr.last td { border-bottom: 2px solid var(--sep); }
+td.goal { text-align: left; padding: 4px 10px; min-width: 210px; width: 26%; font-size: 13.5px; line-height: 1.4; }
+td.goal:empty::before { content: attr(data-ph); color: var(--muted); opacity: .7; }
+td.goal[contenteditable] { cursor: text; }
+td.goal[contenteditable]:hover { background: color-mix(in srgb, var(--head) 6%, transparent); }
+thead th.goalhead { min-width: 210px; }
+thead th.gno { min-width: 24px; width: 24px; padding: 0; }
+td.gno { font-size: 11.5px; color: var(--muted); width: 22px; min-width: 22px; }
+.teach [contenteditable] { cursor: text; }
+
+.out { display: flex; flex-direction: column; gap: 10px; }
+.out h2 { margin: 0; font-size: 16px; }
+.preview { background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; padding: 12px; overflow-x: auto; }
+.preview img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+#msg { font-size: 13.5px; color: var(--done); min-height: 1.2em; }
+#msg.err { color: var(--miss); }
+.tip { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 0; }
+#lock { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <h1 id="h1">주차별 목표진도 현황</h1>
+    <p class="sub" id="guide">내 이름을 고르고, 내 줄의 칸을 누르면 <b>○ 완료 → △ 진행 중 → ✕ 미완 → 빈칸</b> 순서로 바뀌어요. 바로 저장돼요.</p>
+  </header>
+
+  <!-- 학생: 내 이름 고르기 -->
+  <div class="me" id="studentBox">
+    <b>내 이름</b>
+    <select id="who"><option value="">— 이름을 골라요 —</option></select>
+    <span class="sub" id="whoNote">내 줄만 고칠 수 있어요.</span>
+  </div>
+
+  <!-- 선생님 잠금 -->
+  <div class="me" id="lockBox" hidden>
+    <b>선생님 모드</b>
+    <div id="lock">
+      <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password">
+      <button type="button" id="pwBtn" class="primary">들어가기</button>
+      <span id="pwMsg" class="sub"></span>
+    </div>
+  </div>
+
+  <div class="bar" id="teacherBar" hidden>
+    <span class="badge">선생님</span>
+    <label for="title">표 제목 <input type="text" id="title"></label>
+    <button id="addCol" type="button">＋ 다음 주 추가</button>
+    <button id="delCol" type="button">－ 마지막 주 삭제</button>
+    <button id="reset" type="button">표시 모두 지우기</button>
+  </div>
+  <p class="sub" id="teacherTip" hidden>선생님 모드: 모든 칸을 고칠 수 있고, 이름·주차 제목은 눌러서 바로 고쳐요. 시트에서 이름 15개를 복사해 첫 이름 칸에 붙여넣으면 한 번에 들어가요.</p>
+
+  <div class="legend">
+    <span><span class="chip s1">○</span> 완료</span>
+    <span><span class="chip s2">△</span> 진행 중</span>
+    <span><span class="chip s3">✕</span> 미완</span>
+    <span id="sync"></span>
+  </div>
+
+  <div class="tablebox"><table id="tbl"></table></div>
+
+  <div class="bar">
+    <button class="primary" id="copyImg" type="button">카톡용 이미지 복사</button>
+    <span id="msg" role="status"></span>
+  </div>
+
+  <section class="out">
+    <h2>카톡에 보낼 이미지 미리보기</h2>
+    <div class="preview"><img id="img" alt="카톡용 진도표 이미지"></div>
+    <p class="tip">복사 버튼이 안 될 때: 위 이미지를 <b>마우스 오른쪽 클릭 → 이미지 복사</b>(PC), 또는 <b>길게 눌러 이미지 저장/복사</b>(갤럭시탭) 후 카톡에 붙여넣으세요.</p>
+  </section>
+</div>
+
+<script>
+// ▼ Apps Script 웹 앱 주소 (비어 있으면 이 기기에만 저장되는 연습 모드)
+const SHEET_URL = "";
+
+const KEY = 'goal-progress-table-v2';
+const SYM = ['', '○', '△', '✕'];
+const N = 15;
+const G = 2; // 학생당 목표 줄 수
+const ROWS = N * G;
+const FIRST_MON = new Date(2026, 10, 9), LAST_DAY = new Date(2027, 1, 28);
+const TEACHER = location.hash === '#teacher';
+
+function weekLabel(mon) {
+  const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+  return `${mon.getMonth() + 1}.${mon.getDate()}~${fri.getMonth() + 1}.${fri.getDate()}`;
+}
+function weekCols() {
+  const out = [];
+  for (let d = new Date(FIRST_MON); d <= LAST_DAY; d.setDate(d.getDate() + 7)) out.push(weekLabel(d));
+  return out;
+}
+function defaults() {
+  const cols = weekCols();
+  return { v2: true, title: '주차별 목표진도 현황', cols,
+    names: Array.from({ length: N }, (_, i) => '학생' + (i + 1)),
+    goals: Array(ROWS).fill(''),
+    marks: Array.from({ length: ROWS }, () => Array(cols.length).fill(0)) };
+}
+function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+let S = defaults();
+if (!SHEET_URL) { try { const o = JSON.parse(ls(KEY)); if (o && o.v2) S = o; } catch (e) {} }
+let pw = ls(KEY + ':pw') || '';
+let isTeacher = false;
+let me = ls(KEY + ':me');
+me = me === null || me === '' ? -1 : +me;
+let pending = 0;
+
+const $ = id => document.getElementById(id);
+const tbl = $('tbl'), msg = $('msg');
+
+async function api(body) {
+  const res = await fetch(SHEET_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || 'fail');
+  return j;
+}
+function applyServer(j) {
+  if (!j || !j.cols) return;
+  S = { v2: true, title: j.title, cols: j.cols, names: j.names, goals: j.goals, marks: j.marks };
+}
+function saveLocal() { if (!SHEET_URL) ls(KEY, JSON.stringify(S)); }
+function setSync(t) { $('sync').textContent = t; }
+
+/* ---------- 화면 ---------- */
+function esc(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+function countDone(k) { return (S.marks[k] || []).slice(0, S.cols.length).filter(v => v === 1).length; }
+function canEdit(i) { return isTeacher || i === me; }
+
+function renderWho() {
+  const sel = $('who');
+  sel.innerHTML = '<option value="">— 이름을 골라요 —</option>' +
+    S.names.map((n, i) => n ? `<option value="${i}">${i + 1}. ${esc(n)}</option>` : '').join('');
+  sel.value = me >= 0 ? String(me) : '';
+}
+function render() {
+  $('h1').textContent = S.title || '주차별 목표진도 현황';
+  if (document.activeElement !== $('title')) $('title').value = S.title || '';
+  const ed = isTeacher ? ' contenteditable="true" spellcheck="false"' : '';
+  let h = `<thead><tr><th class="no">번호</th><th class="namehead">이름</th><th class="gno"></th><th class="goalhead">목표진도</th>`;
+  S.cols.forEach((c, j) => { h += `<th data-col="${j}"${ed}>${esc(c)}</th>`; });
+  h += '<th>완료</th></tr></thead><tbody>';
+  S.names.forEach((n, i) => {
+    const can = canEdit(i);
+    for (let g = 0; g < G; g++) {
+      const k = i * G + g;
+      const cls = [i === me && !isTeacher ? 'mine' : '', g === G - 1 ? 'last' : ''].join(' ');
+      h += `<tr class="${cls}">`;
+      if (g === 0) h += `<td class="no" rowspan="${G}">${i + 1}</td><td class="name" rowspan="${G}" data-row="${i}"${ed}>${esc(n)}</td>`;
+      h += `<td class="gno">${g + 1}</td><td class="goal" data-goal="${k}" data-ph="${can ? '목표 ' + (g + 1) + ' 적기' : ''}"${can ? ' contenteditable="true" spellcheck="false"' : ''}>${esc((S.goals || [])[k] || '')}</td>`;
+      S.cols.forEach((_, j) => {
+        const v = (S.marks[k] || [])[j] || 0;
+        h += `<td class="cell ${v ? 's' + v : ''} ${can ? 'can' : ''}" ${can ? 'tabindex="0"' : ''} data-k="${k}" data-c="${j}">${SYM[v]}</td>`;
+      });
+      h += `<td class="sum" data-sum="${k}">${countDone(k)}/${S.cols.length}</td></tr>`;
+    }
+  });
+  tbl.innerHTML = h + '</tbody>';
+  tbl.classList.toggle('teach', isTeacher);
+  drawImage();
+}
+function refreshAll() { renderWho(); render(); }
+
+/* ---------- 칸 누르기 ---------- */
+async function cycle(td) {
+  const k = +td.dataset.k, c = +td.dataset.c;
+  if (!canEdit(Math.floor(k / G))) return;
+  const before = S.marks[k][c] || 0;
+  const v = (before + 1) % 4;
+  S.marks[k][c] = v;
+  td.className = 'cell can' + (v ? ' s' + v : '');
+  td.textContent = SYM[v];
+  tbl.querySelector(`[data-sum="${k}"]`).textContent = countDone(k) + '/' + S.cols.length;
+  drawImage(); saveLocal();
+  if (!SHEET_URL) return;
+  pending++; setSync('저장 중…');
+  try { await api({ action: 'mark', k, c, v }); setSync('저장됨'); }
+  catch (e) {
+    S.marks[k][c] = before; render();
+    setSync('저장이 안 됐어요. 인터넷을 확인하고 다시 눌러 주세요.');
+  } finally { pending--; }
+}
+tbl.addEventListener('click', e => { const td = e.target.closest('td.cell'); if (td) cycle(td); });
+tbl.addEventListener('keydown', e => {
+  const td = e.target.closest('td.cell');
+  if (td && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); cycle(td); }
+  if (e.target.matches('[contenteditable]') && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+});
+
+/* ---------- 선생님: 이름·주차 고치기 ---------- */
+const timers = {};
+function later(key, fn, ms = 900) { clearTimeout(timers[key]); timers[key] = setTimeout(fn, ms); }
+async function teacherSave(body, okText = '저장됨') {
+  saveLocal(); drawImage();
+  if (!SHEET_URL) return;
+  pending++; setSync('저장 중…');
+  try { applyServer(await api({ ...body, pw })); setSync(okText); }
+  catch (e) { setSync(e.message === 'pw' ? '비밀번호가 틀렸어요.' : '저장이 안 됐어요. 다시 해 주세요.'); }
+  finally { pending--; }
+}
+tbl.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.goal !== undefined) {
+    const k = +t.dataset.goal;
+    if (!canEdit(Math.floor(k / G))) return;
+    S.goals[k] = t.textContent;
+    saveLocal(); drawImage();
+    if (SHEET_URL) later('goal' + k, async () => {
+      pending++; setSync('저장 중…');
+      try { await api({ action: 'goal', k, text: S.goals[k] }); setSync('저장됨'); }
+      catch (err) { setSync('목표가 저장이 안 됐어요. 다시 적어 주세요.'); }
+      finally { pending--; }
+    });
+    return;
+  }
+  if (!isTeacher) return;
+  if (t.dataset.row !== undefined) { S.names[+t.dataset.row] = t.textContent.trim(); later('names', () => { teacherSave({ action: 'names', names: S.names }); renderWho(); }); }
+  if (t.dataset.col !== undefined) { S.cols[+t.dataset.col] = t.textContent.trim(); later('cols', () => teacherSave({ action: 'cols', cols: S.cols })); }
+});
+tbl.addEventListener('paste', e => {
+  if (!isTeacher) return;
+  const t = e.target.closest('td.name');
+  if (!t) return;
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  const lines = text.split(/\r?\n/).map(s => s.split('\t')[0].trim()).filter(Boolean);
+  if (lines.length < 2) return;
+  e.preventDefault();
+  const start = +t.dataset.row;
+  lines.forEach((n, k) => { if (start + k < N) S.names[start + k] = n; });
+  refreshAll(); teacherSave({ action: 'names', names: S.names });
+});
+$('title').addEventListener('input', () => {
+  S.title = $('title').value; $('h1').textContent = S.title;
+  later('title', () => teacherSave({ action: 'title', title: S.title }));
+});
+$('addCol').onclick = () => {
+  const mon = new Date(FIRST_MON); mon.setDate(mon.getDate() + 7 * S.cols.length);
+  S.cols.push(weekLabel(mon));
+  S.marks.forEach(row => { row[S.cols.length - 1] = 0; });
+  render(); teacherSave({ action: 'cols', cols: S.cols });
+};
+$('delCol').onclick = () => {
+  if (S.cols.length <= 1) return;
+  S.cols.pop(); S.marks.forEach(row => { row.length = S.cols.length; });
+  render(); teacherSave({ action: 'cols', cols: S.cols });
+};
+let resetArmed = false;
+$('reset').onclick = e => {
+  if (!resetArmed) { resetArmed = true; e.target.textContent = '한 번 더 누르면 모두 지워져요'; setTimeout(() => { resetArmed = false; e.target.textContent = '표시 모두 지우기'; }, 3000); return; }
+  resetArmed = false; e.target.textContent = '표시 모두 지우기';
+  S.marks = Array.from({ length: ROWS }, () => Array(S.cols.length).fill(0));
+  render(); teacherSave({ action: 'reset' }, '모두 지웠어요');
+};
+
+/* ---------- 학생: 내 이름 ---------- */
+$('who').addEventListener('change', () => {
+  me = $('who').value === '' ? -1 : +$('who').value;
+  ls(KEY + ':me', me >= 0 ? String(me) : '');
+  render();
+});
+
+/* ---------- 선생님 모드 들어가기 ---------- */
+function enterTeacher() {
+  isTeacher = true;
+  $('lockBox').hidden = true; $('studentBox').hidden = true;
+  $('teacherBar').hidden = false; $('teacherTip').hidden = false;
+  $('guide').innerHTML = '모든 학생의 칸을 고칠 수 있어요. 칸을 누르면 <b>○ → △ → ✕ → 빈칸</b> 순서로 바뀌어요.';
+  render();
+}
+async function tryPw(p) {
+  if (!SHEET_URL) { enterTeacher(); return; }
+  $('pwMsg').textContent = '확인 중…';
+  try { await api({ action: 'auth', pw: p }); pw = p; ls(KEY + ':pw', p); $('pwMsg').textContent = ''; enterTeacher(); }
+  catch (e) { $('pwMsg').textContent = e.message === 'pw' ? '비밀번호가 틀렸어요.' : '연결이 안 돼요. 다시 해 주세요.'; }
+}
+$('pwBtn').onclick = () => tryPw($('pw').value);
+$('pw').addEventListener('keydown', e => { if (e.key === 'Enter') tryPw($('pw').value); });
+
+/* ---------- 불러오기 + 자동 새로고침 ---------- */
+async function load() {
+  if (!SHEET_URL) { setSync('연습 모드 · 이 기기에만 저장돼요'); return; }
+  if (pending || (document.activeElement && document.activeElement.isContentEditable) || document.activeElement === $('title')) return;
+  try { applyServer(await api({ action: 'list' })); if (!pending) { refreshAll(); setSync('최신 상태'); } }
+  catch (e) { setSync('불러오지 못했어요. 잠시 후 다시 시도해요.'); }
+}
+setInterval(() => { if (!document.hidden) load(); }, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+
+/* ---------- 카톡용 이미지 ---------- */
+const canvas = document.createElement('canvas');
+const C = { head: '#2f6b5a', line: '#d9e2de', sep: '#8fa39b', ink: '#1d2a26', muted: '#6b7a75', zebra: '#f4f8f6',
+  1: ['#2e8b57', '#e3f3e9'], 2: ['#c98a12', '#fbf0d9'], 3: ['#c2453c', '#f9e2df'] };
+const F = '"Noto Sans KR", "Malgun Gothic", sans-serif';
+function drawImage() {
+  const scale = 2, pad = 24, rowH = 34, headH = 44, noW = 44, nameW = 96, gnoW = 24, goalW = 220, colW = 86, sumW = 60;
+  const W = pad * 2 + noW + nameW + gnoW + goalW + colW * S.cols.length + sumW;
+  const topH = 72, H = topH + headH + rowH * ROWS + pad + 8;
+  canvas.width = W * scale; canvas.height = H * scale;
+  const g = canvas.getContext('2d');
+  g.scale(scale, scale);
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  g.fillStyle = C.ink; g.font = `700 20px ${F}`; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.fillText(S.title || '목표진도 현황', pad, 38);
+  const t = new Date();
+  g.fillStyle = C.muted; g.font = `400 13px ${F}`;
+  g.fillText(`${t.getFullYear()}.${t.getMonth() + 1}.${t.getDate()} 기준   ○ 완료  △ 진행 중  ✕ 미완`, pad, 60);
+  const x0 = pad, y0 = topH;
+  const xs = [x0, x0 + noW, x0 + noW + nameW, x0 + noW + nameW + gnoW, x0 + noW + nameW + gnoW + goalW];
+  S.cols.forEach(() => xs.push(xs[xs.length - 1] + colW));
+  xs.push(xs[xs.length - 1] + sumW);
+  const tableW = xs[xs.length - 1] - x0, yBody = y0 + headH, yEnd = yBody + rowH * ROWS;
+  g.fillStyle = C.head; g.fillRect(x0, y0, tableW, headH);
+  g.fillStyle = '#ffffff'; g.font = `700 12.5px ${F}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  ['번호', '이름', '', '목표진도', ...S.cols, '완료'].forEach((s, k) => g.fillText(fit(g, s, xs[k + 1] - xs[k] - 8), (xs[k] + xs[k + 1]) / 2, y0 + headH / 2));
+  for (let i = 0; i < N; i++) {
+    const ys = yBody + rowH * G * i, blockH = rowH * G;
+    if (i % 2 === 1) { g.fillStyle = C.zebra; g.fillRect(x0, ys, tableW, blockH); }
+    g.fillStyle = C.muted; g.font = `400 13px ${F}`; g.textAlign = 'center';
+    g.fillText(String(i + 1), (xs[0] + xs[1]) / 2, ys + blockH / 2);
+    g.fillStyle = C.ink; g.font = `700 14.5px ${F}`;
+    g.fillText(fit(g, S.names[i] || '', nameW - 12), (xs[1] + xs[2]) / 2, ys + blockH / 2);
+    for (let gi = 0; gi < G; gi++) {
+      const k = i * G + gi, y = ys + rowH * gi, cy = y + rowH / 2;
+      g.fillStyle = C.muted; g.font = `400 11.5px ${F}`; g.textAlign = 'center';
+      g.fillText(String(gi + 1), (xs[2] + xs[3]) / 2, cy);
+      g.fillStyle = C.ink; g.font = `400 13px ${F}`; g.textAlign = 'left';
+      g.fillText(fit(g, ((S.goals || [])[k] || '').replace(/\s+/g, ' ').trim(), goalW - 16), xs[3] + 8, cy);
+      S.cols.forEach((_, j) => {
+        const v = (S.marks[k] || [])[j] || 0;
+        if (!v) return;
+        const cx = xs[j + 4], cw = xs[j + 5] - cx;
+        g.fillStyle = C[v][1]; g.fillRect(cx + 1, y + 1, cw - 2, rowH - 2);
+        g.fillStyle = C[v][0]; g.font = `700 17px ${F}`; g.textAlign = 'center';
+        g.fillText(SYM[v], cx + cw / 2, cy + 1);
+      });
+      const done = countDone(k), all = done === S.cols.length;
+      g.fillStyle = all ? C[1][0] : C.muted; g.font = `${all ? 700 : 400} 12.5px ${F}`; g.textAlign = 'center';
+      g.fillText(done + '/' + S.cols.length, (xs[xs.length - 2] + xs[xs.length - 1]) / 2, cy);
+    }
+  }
+  // 선: 목표 사이 얇게, 학생 사이 진하게
+  g.strokeStyle = C.line; g.lineWidth = 1;
+  for (let k = 1; k < ROWS; k++) if (k % G) line(g, xs[2], yBody + rowH * k, x0 + tableW, yBody + rowH * k);
+  xs.forEach((x, idx) => line(g, x, y0, x, yEnd));
+  g.strokeStyle = C.sep;
+  for (let i = 0; i <= N; i++) { g.lineWidth = (i === 0 || i === N) ? 1 : 1.5; line(g, x0, yBody + rowH * G * i, x0 + tableW, yBody + rowH * G * i); }
+  g.lineWidth = 1; line(g, x0, y0, x0 + tableW, y0);
+  $('img').src = canvas.toDataURL('image/png');
+}
+function line(g, a, b, c, d) { g.beginPath(); g.moveTo(Math.round(a) + .5, Math.round(b) + .5); g.lineTo(Math.round(c) + .5, Math.round(d) + .5); g.stroke(); }
+function fit(g, t, w) { if (g.measureText(t).width <= w) return t; while (t.length > 1 && g.measureText(t + '…').width > w) t = t.slice(0, -1); return t + '…'; }
+
+$('copyImg').onclick = async () => {
+  drawImage(); msg.className = ''; msg.textContent = '';
+  try {
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    msg.textContent = '복사됐어요. 카톡 입력창에서 Ctrl+V 하세요.';
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = '자동 복사가 안 돼요. 아래 이미지를 오른쪽 클릭(또는 길게 눌러) 복사해 주세요.';
+  }
+};
+
+/* ---------- 시작 ---------- */
+if (TEACHER) {
+  $('studentBox').hidden = true;
+  if (pw && SHEET_URL) tryPw(pw); else if (!SHEET_URL) enterTeacher(); else $('lockBox').hidden = false;
+}
+refreshAll();
+load();
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(drawImage);
+</script>
+</body>
+</html>
