@@ -56,13 +56,11 @@ thead th.namehead { position: sticky; left: 0; z-index: 1; }
 td.cell { font-size: 17px; font-weight: 700; user-select: none; }
 td.cell.can { cursor: pointer; }
 td.cell.can:hover { outline: 2px solid var(--head); outline-offset: -2px; }
-tr.mine td.no, tr.mine td.name, tr.mine td.goal, tr.mine td.gno { background: var(--mine); font-weight: 700; }
-tr.mine td.cell:not(.s1):not(.s2):not(.s3) { background: var(--mine); }
 td.sum { font-size: 13px; color: var(--muted); min-width: 60px; }
 tr.last td { border-bottom: 2px solid var(--sep); }
 td.name:empty::before { content: attr(data-ph); color: var(--muted); font-weight: 400; font-size: 12.5px; }
-td.name.claim { cursor: text; outline: 1px dashed var(--head); outline-offset: -4px; }
-td.name.claim:focus { outline: 2px solid var(--head); }
+td.name { cursor: text; }
+td.name:focus, td.goal:focus { outline: 2px solid var(--head); outline-offset: -2px; }
 td.goal { text-align: left; padding: 4px 10px; min-width: 210px; width: 26%; font-size: 13.5px; line-height: 1.4; }
 td.goal:empty::before { content: attr(data-ph); color: var(--muted); opacity: .7; }
 td.goal[contenteditable] { cursor: text; }
@@ -79,41 +77,14 @@ td.gno { font-size: 11.5px; color: var(--muted); width: 22px; min-width: 22px; }
 #msg { font-size: 13.5px; color: var(--done); min-height: 1.2em; }
 #msg.err { color: var(--miss); }
 .tip { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 0; }
-#lock { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header style="display:flex;flex-direction:column;gap:6px">
     <h1 id="h1">주차별 목표진도 현황</h1>
-    <p class="sub" id="guide">처음이면 <b>빈 이름 칸에 내 이름을 써요</b>(이미 썼으면 위에서 골라요). 그다음 목표진도를 적고, 내 줄의 칸을 누르면 <b>○ 완료 → △ 진행 중 → ✕ 미완 → 빈칸</b> 순서로 바뀌어요. 바로 저장돼요.</p>
+    <p class="sub" id="guide">모두 같이 쓰는 표예요. <b>이름 칸</b>에 내 이름을, <b>목표진도</b>에 목표 두 가지를 적고, 주차 칸을 누르면 <b>○ 완료 → △ 진행 중 → ✕ 미완 → 빈칸</b> 순서로 바뀌어요. 쓰는 대로 바로 저장돼요.</p>
   </header>
-
-  <!-- 학생: 내 이름 고르기 -->
-  <div class="me" id="studentBox">
-    <b>내 이름</b>
-    <select id="who"><option value="">— 이름을 골라요 —</option></select>
-    <span class="sub" id="whoNote">이름이 없으면 표의 빈 이름 칸에 직접 써요. 내 줄만 고칠 수 있어요.</span>
-  </div>
-
-  <!-- 선생님 잠금 -->
-  <div class="me" id="lockBox" hidden>
-    <b>선생님 모드</b>
-    <div id="lock">
-      <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password">
-      <button type="button" id="pwBtn" class="primary">들어가기</button>
-      <span id="pwMsg" class="sub"></span>
-    </div>
-  </div>
-
-  <div class="bar" id="teacherBar" hidden>
-    <span class="badge">선생님</span>
-    <label for="title">표 제목 <input type="text" id="title"></label>
-    <button id="addCol" type="button">＋ 다음 주 추가</button>
-    <button id="delCol" type="button">－ 마지막 주 삭제</button>
-    <button id="reset" type="button">표시 모두 지우기</button>
-  </div>
-  <p class="sub" id="teacherTip" hidden>선생님 모드: 모든 칸을 고칠 수 있고, 이름·주차 제목은 눌러서 바로 고쳐요. 시트에서 이름 15개를 복사해 첫 이름 칸에 붙여넣으면 한 번에 들어가요.</p>
 
   <div class="legend">
     <span><span class="chip s1">○</span> 완료</span>
@@ -146,7 +117,6 @@ const N = 15;
 const G = 2; // 학생당 목표 줄 수
 const ROWS = N * G;
 const FIRST_MON = new Date(2026, 10, 9), LAST_DAY = new Date(2027, 1, 28);
-const TEACHER = location.hash === '#teacher';
 
 function weekLabel(mon) {
   const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
@@ -168,10 +138,6 @@ function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); l
 
 let S = defaults();
 if (!SHEET_URL) { try { const o = JSON.parse(ls(KEY)); if (o && o.v2) S = o; } catch (e) {} }
-let pw = ls(KEY + ':pw') || '';
-let isTeacher = false;
-let me = ls(KEY + ':me');
-me = me === null || me === '' ? -1 : +me;
 let pending = 0;
 
 const $ = id => document.getElementById(id);
@@ -193,53 +159,34 @@ function setSync(t) { $('sync').textContent = t; }
 /* ---------- 화면 ---------- */
 function esc(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
 function countDone(k) { return (S.marks[k] || []).slice(0, S.cols.length).filter(v => v === 1).length; }
-function canEdit(i) { return isTeacher || i === me; }
-function isFree(i) { const n = S.names[i] || ''; return !n.trim() || /^학생\d+$/.test(n.trim()); }
-function shown(i) { return isFree(i) ? '' : S.names[i]; }
+function shown(i) { const n = (S.names[i] || '').trim(); return /^학생\d+$/.test(n) ? '' : n; }
+const ED = ' contenteditable="true" spellcheck="false"';
 
-function renderWho() {
-  const sel = $('who');
-  sel.innerHTML = '<option value="">— 이름을 골라요 —</option>' +
-    S.names.map((n, i) => isFree(i) ? '' : `<option value="${i}">${i + 1}. ${esc(n)}</option>`).join('');
-  sel.value = me >= 0 ? String(me) : '';
-}
 function render() {
   $('h1').textContent = S.title || '주차별 목표진도 현황';
-  if (document.activeElement !== $('title')) $('title').value = S.title || '';
-  const ed = isTeacher ? ' contenteditable="true" spellcheck="false"' : '';
   let h = `<thead><tr><th class="no">번호</th><th class="namehead">이름</th><th class="gno"></th><th class="goalhead">목표진도</th>`;
-  S.cols.forEach((c, j) => { h += `<th data-col="${j}"${ed}>${esc(c)}</th>`; });
+  S.cols.forEach(c => { h += `<th>${esc(c)}</th>`; });
   h += '<th>완료</th></tr></thead><tbody>';
   S.names.forEach((n, i) => {
-    const can = canEdit(i);
     for (let g = 0; g < G; g++) {
       const k = i * G + g;
-      const cls = [i === me && !isTeacher ? 'mine' : '', g === G - 1 ? 'last' : ''].join(' ');
-      h += `<tr class="${cls}">`;
-      if (g === 0) {
-        h += `<td class="no" rowspan="${G}">${i + 1}</td>`;
-        if (isTeacher) h += `<td class="name" rowspan="${G}" data-row="${i}" data-ph="(빈 자리)"${ed}>${esc(shown(i))}</td>`;
-        else if (i === me || (me < 0 && isFree(i))) h += `<td class="name claim" rowspan="${G}" data-claim="${i}" data-ph="여기에 내 이름 쓰기" contenteditable="true" spellcheck="false">${esc(shown(i))}</td>`;
-        else h += `<td class="name" rowspan="${G}">${esc(shown(i))}</td>`;
-      }
-      h += `<td class="gno">${g + 1}</td><td class="goal" data-goal="${k}" data-ph="${can ? '목표 ' + (g + 1) + ' 적기' : ''}"${can ? ' contenteditable="true" spellcheck="false"' : ''}>${esc((S.goals || [])[k] || '')}</td>`;
+      h += `<tr class="${g === G - 1 ? 'last' : ''}">`;
+      if (g === 0) h += `<td class="no" rowspan="${G}">${i + 1}</td><td class="name" rowspan="${G}" data-row="${i}" data-ph="이름 쓰기"${ED}>${esc(shown(i))}</td>`;
+      h += `<td class="gno">${g + 1}</td><td class="goal" data-goal="${k}" data-ph="목표 ${g + 1} 적기"${ED}>${esc((S.goals || [])[k] || '')}</td>`;
       S.cols.forEach((_, j) => {
         const v = (S.marks[k] || [])[j] || 0;
-        h += `<td class="cell ${v ? 's' + v : ''} ${can ? 'can' : ''}" ${can ? 'tabindex="0"' : ''} data-k="${k}" data-c="${j}">${SYM[v]}</td>`;
+        h += `<td class="cell can ${v ? 's' + v : ''}" tabindex="0" data-k="${k}" data-c="${j}">${SYM[v]}</td>`;
       });
       h += `<td class="sum" data-sum="${k}">${countDone(k)}/${S.cols.length}</td></tr>`;
     }
   });
   tbl.innerHTML = h + '</tbody>';
-  tbl.classList.toggle('teach', isTeacher);
   drawImage();
 }
-function refreshAll() { renderWho(); render(); }
 
 /* ---------- 칸 누르기 ---------- */
 async function cycle(td) {
   const k = +td.dataset.k, c = +td.dataset.c;
-  if (!canEdit(Math.floor(k / G))) return;
   const before = S.marks[k][c] || 0;
   const v = (before + 1) % 4;
   S.marks[k][c] = v;
@@ -262,57 +209,31 @@ tbl.addEventListener('keydown', e => {
   if (e.target.matches('[contenteditable]') && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
 
-/* ---------- 학생: 내 이름 쓰기 ---------- */
-tbl.addEventListener('focusout', async e => {
-  const t = e.target;
-  if (!t.dataset || t.dataset.claim === undefined) return;
-  const i = +t.dataset.claim;
-  const name = t.textContent.trim().slice(0, 30);
-  if (!name || name === shown(i)) { if (!name) t.textContent = shown(i); return; }
-  const old = isFree(i) ? '' : S.names[i];
-  const take = () => { me = i; ls(KEY + ':me', String(i)); };
-  if (!SHEET_URL) { S.names[i] = name; take(); saveLocal(); refreshAll(); setSync('이름을 썼어요'); return; }
-  pending++; setSync('저장 중…');
-  try {
-    applyServer(await api({ action: 'claim', i, name, old }));
-    take(); setSync('이름을 썼어요. 이제 목표와 진도를 적어요.');
-  } catch (err) {
-    setSync(err.message === 'taken' ? '그 자리는 방금 다른 친구가 썼어요. 다른 빈 칸에 써 주세요.' : '저장이 안 됐어요. 다시 써 주세요.');
-  } finally { pending--; refreshAll(); if (me < 0) load(); }
-});
-
-/* ---------- 선생님: 이름·주차 고치기 ---------- */
+/* ---------- 이름·목표 쓰기 (누구나) ---------- */
 const timers = {};
 function later(key, fn, ms = 900) { clearTimeout(timers[key]); timers[key] = setTimeout(fn, ms); }
-async function teacherSave(body, okText = '저장됨') {
-  saveLocal(); drawImage();
+async function send(body, failText) {
   if (!SHEET_URL) return;
   pending++; setSync('저장 중…');
-  try { applyServer(await api({ ...body, pw })); setSync(okText); }
-  catch (e) { setSync(e.message === 'pw' ? '비밀번호가 틀렸어요.' : '저장이 안 됐어요. 다시 해 주세요.'); }
+  try { await api(body); setSync('저장됨'); }
+  catch (err) { setSync(failText); }
   finally { pending--; }
 }
 tbl.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.goal !== undefined) {
     const k = +t.dataset.goal;
-    if (!canEdit(Math.floor(k / G))) return;
     S.goals[k] = t.textContent;
     saveLocal(); drawImage();
-    if (SHEET_URL) later('goal' + k, async () => {
-      pending++; setSync('저장 중…');
-      try { await api({ action: 'goal', k, text: S.goals[k] }); setSync('저장됨'); }
-      catch (err) { setSync('목표가 저장이 안 됐어요. 다시 적어 주세요.'); }
-      finally { pending--; }
-    });
-    return;
+    later('goal' + k, () => send({ action: 'goal', k, text: S.goals[k] }, '목표가 저장이 안 됐어요. 다시 적어 주세요.'));
+  } else if (t.dataset.row !== undefined) {
+    const i = +t.dataset.row;
+    S.names[i] = t.textContent.trim();
+    saveLocal(); drawImage();
+    later('name' + i, () => send({ action: 'name', i, name: S.names[i] }, '이름이 저장이 안 됐어요. 다시 써 주세요.'));
   }
-  if (!isTeacher) return;
-  if (t.dataset.row !== undefined) { S.names[+t.dataset.row] = t.textContent.trim(); later('names', () => { teacherSave({ action: 'names', names: S.names }); renderWho(); }); }
-  if (t.dataset.col !== undefined) { S.cols[+t.dataset.col] = t.textContent.trim(); later('cols', () => teacherSave({ action: 'cols', cols: S.cols })); }
 });
 tbl.addEventListener('paste', e => {
-  if (!isTeacher) return;
   const t = e.target.closest('td.name');
   if (!t) return;
   const text = (e.clipboardData || window.clipboardData).getData('text');
@@ -321,60 +242,15 @@ tbl.addEventListener('paste', e => {
   e.preventDefault();
   const start = +t.dataset.row;
   lines.forEach((n, k) => { if (start + k < N) S.names[start + k] = n; });
-  refreshAll(); teacherSave({ action: 'names', names: S.names });
+  saveLocal(); render();
+  (async () => { for (let k = 0; k < lines.length && start + k < N; k++) await send({ action: 'name', i: start + k, name: lines[k] }, '이름이 저장이 안 됐어요. 다시 해 주세요.'); })();
 });
-$('title').addEventListener('input', () => {
-  S.title = $('title').value; $('h1').textContent = S.title;
-  later('title', () => teacherSave({ action: 'title', title: S.title }));
-});
-$('addCol').onclick = () => {
-  const mon = new Date(FIRST_MON); mon.setDate(mon.getDate() + 7 * S.cols.length);
-  S.cols.push(weekLabel(mon));
-  S.marks.forEach(row => { row[S.cols.length - 1] = 0; });
-  render(); teacherSave({ action: 'cols', cols: S.cols });
-};
-$('delCol').onclick = () => {
-  if (S.cols.length <= 1) return;
-  S.cols.pop(); S.marks.forEach(row => { row.length = S.cols.length; });
-  render(); teacherSave({ action: 'cols', cols: S.cols });
-};
-let resetArmed = false;
-$('reset').onclick = e => {
-  if (!resetArmed) { resetArmed = true; e.target.textContent = '한 번 더 누르면 모두 지워져요'; setTimeout(() => { resetArmed = false; e.target.textContent = '표시 모두 지우기'; }, 3000); return; }
-  resetArmed = false; e.target.textContent = '표시 모두 지우기';
-  S.marks = Array.from({ length: ROWS }, () => Array(S.cols.length).fill(0));
-  render(); teacherSave({ action: 'reset' }, '모두 지웠어요');
-};
-
-/* ---------- 학생: 내 이름 ---------- */
-$('who').addEventListener('change', () => {
-  me = $('who').value === '' ? -1 : +$('who').value;
-  ls(KEY + ':me', me >= 0 ? String(me) : '');
-  render();
-});
-
-/* ---------- 선생님 모드 들어가기 ---------- */
-function enterTeacher() {
-  isTeacher = true;
-  $('lockBox').hidden = true; $('studentBox').hidden = true;
-  $('teacherBar').hidden = false; $('teacherTip').hidden = false;
-  $('guide').innerHTML = '모든 학생의 칸을 고칠 수 있어요. 칸을 누르면 <b>○ → △ → ✕ → 빈칸</b> 순서로 바뀌어요.';
-  render();
-}
-async function tryPw(p) {
-  if (!SHEET_URL) { enterTeacher(); return; }
-  $('pwMsg').textContent = '확인 중…';
-  try { await api({ action: 'auth', pw: p }); pw = p; ls(KEY + ':pw', p); $('pwMsg').textContent = ''; enterTeacher(); }
-  catch (e) { $('pwMsg').textContent = e.message === 'pw' ? '비밀번호가 틀렸어요.' : '연결이 안 돼요. 다시 해 주세요.'; }
-}
-$('pwBtn').onclick = () => tryPw($('pw').value);
-$('pw').addEventListener('keydown', e => { if (e.key === 'Enter') tryPw($('pw').value); });
 
 /* ---------- 불러오기 + 자동 새로고침 ---------- */
 async function load() {
   if (!SHEET_URL) { setSync('연습 모드 · 이 기기에만 저장돼요'); return; }
-  if (pending || (document.activeElement && document.activeElement.isContentEditable) || document.activeElement === $('title')) return;
-  try { applyServer(await api({ action: 'list' })); if (!pending) { refreshAll(); setSync('최신 상태'); } }
+  if (pending || (document.activeElement && document.activeElement.isContentEditable)) return;
+  try { applyServer(await api({ action: 'list' })); if (!pending) { render(); setSync('최신 상태'); } }
   catch (e) { setSync('불러오지 못했어요. 잠시 후 다시 시도해요.'); }
 }
 setInterval(() => { if (!document.hidden) load(); }, 15000);
@@ -457,11 +333,7 @@ $('copyImg').onclick = async () => {
 };
 
 /* ---------- 시작 ---------- */
-if (TEACHER) {
-  $('studentBox').hidden = true;
-  if (pw && SHEET_URL) tryPw(pw); else if (!SHEET_URL) enterTeacher(); else $('lockBox').hidden = false;
-}
-refreshAll();
+render();
 load();
 (document.fonts ? document.fonts.ready : Promise.resolve()).then(drawImage);
 </script>
