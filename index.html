@@ -60,6 +60,9 @@ tr.mine td.no, tr.mine td.name, tr.mine td.goal, tr.mine td.gno { background: va
 tr.mine td.cell:not(.s1):not(.s2):not(.s3) { background: var(--mine); }
 td.sum { font-size: 13px; color: var(--muted); min-width: 60px; }
 tr.last td { border-bottom: 2px solid var(--sep); }
+td.name:empty::before { content: attr(data-ph); color: var(--muted); font-weight: 400; font-size: 12.5px; }
+td.name.claim { cursor: text; outline: 1px dashed var(--head); outline-offset: -4px; }
+td.name.claim:focus { outline: 2px solid var(--head); }
 td.goal { text-align: left; padding: 4px 10px; min-width: 210px; width: 26%; font-size: 13.5px; line-height: 1.4; }
 td.goal:empty::before { content: attr(data-ph); color: var(--muted); opacity: .7; }
 td.goal[contenteditable] { cursor: text; }
@@ -83,14 +86,14 @@ td.gno { font-size: 11.5px; color: var(--muted); width: 22px; min-width: 22px; }
 <div class="wrap">
   <header style="display:flex;flex-direction:column;gap:6px">
     <h1 id="h1">주차별 목표진도 현황</h1>
-    <p class="sub" id="guide">내 이름을 고르고, 내 줄의 칸을 누르면 <b>○ 완료 → △ 진행 중 → ✕ 미완 → 빈칸</b> 순서로 바뀌어요. 바로 저장돼요.</p>
+    <p class="sub" id="guide">처음이면 <b>빈 이름 칸에 내 이름을 써요</b>(이미 썼으면 위에서 골라요). 그다음 목표진도를 적고, 내 줄의 칸을 누르면 <b>○ 완료 → △ 진행 중 → ✕ 미완 → 빈칸</b> 순서로 바뀌어요. 바로 저장돼요.</p>
   </header>
 
   <!-- 학생: 내 이름 고르기 -->
   <div class="me" id="studentBox">
     <b>내 이름</b>
     <select id="who"><option value="">— 이름을 골라요 —</option></select>
-    <span class="sub" id="whoNote">내 줄만 고칠 수 있어요.</span>
+    <span class="sub" id="whoNote">이름이 없으면 표의 빈 이름 칸에 직접 써요. 내 줄만 고칠 수 있어요.</span>
   </div>
 
   <!-- 선생님 잠금 -->
@@ -157,7 +160,7 @@ function weekCols() {
 function defaults() {
   const cols = weekCols();
   return { v2: true, title: '주차별 목표진도 현황', cols,
-    names: Array.from({ length: N }, (_, i) => '학생' + (i + 1)),
+    names: Array(N).fill(''),
     goals: Array(ROWS).fill(''),
     marks: Array.from({ length: ROWS }, () => Array(cols.length).fill(0)) };
 }
@@ -191,11 +194,13 @@ function setSync(t) { $('sync').textContent = t; }
 function esc(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
 function countDone(k) { return (S.marks[k] || []).slice(0, S.cols.length).filter(v => v === 1).length; }
 function canEdit(i) { return isTeacher || i === me; }
+function isFree(i) { const n = S.names[i] || ''; return !n.trim() || /^학생\d+$/.test(n.trim()); }
+function shown(i) { return isFree(i) ? '' : S.names[i]; }
 
 function renderWho() {
   const sel = $('who');
   sel.innerHTML = '<option value="">— 이름을 골라요 —</option>' +
-    S.names.map((n, i) => n ? `<option value="${i}">${i + 1}. ${esc(n)}</option>` : '').join('');
+    S.names.map((n, i) => isFree(i) ? '' : `<option value="${i}">${i + 1}. ${esc(n)}</option>`).join('');
   sel.value = me >= 0 ? String(me) : '';
 }
 function render() {
@@ -211,7 +216,12 @@ function render() {
       const k = i * G + g;
       const cls = [i === me && !isTeacher ? 'mine' : '', g === G - 1 ? 'last' : ''].join(' ');
       h += `<tr class="${cls}">`;
-      if (g === 0) h += `<td class="no" rowspan="${G}">${i + 1}</td><td class="name" rowspan="${G}" data-row="${i}"${ed}>${esc(n)}</td>`;
+      if (g === 0) {
+        h += `<td class="no" rowspan="${G}">${i + 1}</td>`;
+        if (isTeacher) h += `<td class="name" rowspan="${G}" data-row="${i}" data-ph="(빈 자리)"${ed}>${esc(shown(i))}</td>`;
+        else if (i === me || (me < 0 && isFree(i))) h += `<td class="name claim" rowspan="${G}" data-claim="${i}" data-ph="여기에 내 이름 쓰기" contenteditable="true" spellcheck="false">${esc(shown(i))}</td>`;
+        else h += `<td class="name" rowspan="${G}">${esc(shown(i))}</td>`;
+      }
       h += `<td class="gno">${g + 1}</td><td class="goal" data-goal="${k}" data-ph="${can ? '목표 ' + (g + 1) + ' 적기' : ''}"${can ? ' contenteditable="true" spellcheck="false"' : ''}>${esc((S.goals || [])[k] || '')}</td>`;
       S.cols.forEach((_, j) => {
         const v = (S.marks[k] || [])[j] || 0;
@@ -250,6 +260,25 @@ tbl.addEventListener('keydown', e => {
   const td = e.target.closest('td.cell');
   if (td && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); cycle(td); }
   if (e.target.matches('[contenteditable]') && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+});
+
+/* ---------- 학생: 내 이름 쓰기 ---------- */
+tbl.addEventListener('focusout', async e => {
+  const t = e.target;
+  if (!t.dataset || t.dataset.claim === undefined) return;
+  const i = +t.dataset.claim;
+  const name = t.textContent.trim().slice(0, 30);
+  if (!name || name === shown(i)) { if (!name) t.textContent = shown(i); return; }
+  const old = isFree(i) ? '' : S.names[i];
+  const take = () => { me = i; ls(KEY + ':me', String(i)); };
+  if (!SHEET_URL) { S.names[i] = name; take(); saveLocal(); refreshAll(); setSync('이름을 썼어요'); return; }
+  pending++; setSync('저장 중…');
+  try {
+    applyServer(await api({ action: 'claim', i, name, old }));
+    take(); setSync('이름을 썼어요. 이제 목표와 진도를 적어요.');
+  } catch (err) {
+    setSync(err.message === 'taken' ? '그 자리는 방금 다른 친구가 썼어요. 다른 빈 칸에 써 주세요.' : '저장이 안 됐어요. 다시 써 주세요.');
+  } finally { pending--; refreshAll(); if (me < 0) load(); }
 });
 
 /* ---------- 선생님: 이름·주차 고치기 ---------- */
@@ -383,7 +412,7 @@ function drawImage() {
     g.fillStyle = C.muted; g.font = `400 13px ${F}`; g.textAlign = 'center';
     g.fillText(String(i + 1), (xs[0] + xs[1]) / 2, ys + blockH / 2);
     g.fillStyle = C.ink; g.font = `700 14.5px ${F}`;
-    g.fillText(fit(g, S.names[i] || '', nameW - 12), (xs[1] + xs[2]) / 2, ys + blockH / 2);
+    g.fillText(fit(g, shown(i), nameW - 12), (xs[1] + xs[2]) / 2, ys + blockH / 2);
     for (let gi = 0; gi < G; gi++) {
       const k = i * G + gi, y = ys + rowH * gi, cy = y + rowH / 2;
       g.fillStyle = C.muted; g.font = `400 11.5px ${F}`; g.textAlign = 'center';
